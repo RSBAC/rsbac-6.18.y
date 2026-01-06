@@ -6339,15 +6339,12 @@ int readlink_copy(char __user *buffer, int buflen, const char *link, int linklen
 }
 
 #ifdef CONFIG_RSBAC_SYM_REDIR
-int rsbac_readlink_copy(char __user *buffer, int buflen, const char *link, struct inode *inode)
+static int rsbac_readlink_copy(char __user *buffer, int buflen, const char *link, int linklen, struct inode *inode)
 {
-	int copylen;
 	char * rsbac_name;
+	int copylen;
 
-	if (IS_ERR(link))
-		goto out;
-
-	copylen = strlen(link);
+	copylen = linklen;
 	if (unlikely(copylen > (unsigned) buflen))
 		copylen = buflen;
 
@@ -6362,10 +6359,8 @@ int rsbac_readlink_copy(char __user *buffer, int buflen, const char *link, struc
 	} else if (copy_to_user(buffer, link, copylen)) {
 		copylen = -EFAULT;
 	}
-out:
 	return copylen;
 }
-EXPORT_SYMBOL(rsbac_readlink_copy);
 #endif
 
 /**
@@ -6386,7 +6381,11 @@ int vfs_readlink(struct dentry *dentry, char __user *buffer, int buflen)
 	int res;
 
 	if (inode->i_opflags & IOP_CACHED_LINK)
+#ifdef CONFIG_RSBAC_SYM_REDIR
+		return rsbac_readlink_copy(buffer, buflen, inode->i_link, inode->i_linklen, inode);
+#else
 		return readlink_copy(buffer, buflen, inode->i_link, inode->i_linklen);
+#endif
 
 	if (unlikely(!(inode->i_opflags & IOP_DEFAULT_READLINK))) {
 		if (unlikely(inode->i_op->readlink))
@@ -6407,7 +6406,7 @@ int vfs_readlink(struct dentry *dentry, char __user *buffer, int buflen)
 			return PTR_ERR(link);
 	}
 #ifdef CONFIG_RSBAC_SYM_REDIR
-	res = rsbac_readlink_copy(buffer, buflen, link, inode);
+	res = rsbac_readlink_copy(buffer, buflen, link, strlen(link), inode);
 #else
 	res = readlink_copy(buffer, buflen, link, strlen(link));
 #endif
@@ -6525,7 +6524,7 @@ int page_readlink(struct dentry *dentry, char __user *buffer, int buflen)
 	res = PTR_ERR(link);
 	if (!IS_ERR(link))
 #ifdef CONFIG_RSBAC_SYM_REDIR
-		res = rsbac_readlink_copy(buffer, buflen, link,	d_inode(dentry));
+		res = rsbac_readlink_copy(buffer, buflen, link,	strlen(link), d_inode(dentry));
 #else
 		res = readlink_copy(buffer, buflen, link, strlen(link));
 #endif
