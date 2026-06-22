@@ -1,9 +1,9 @@
 /************************************* */
 /* Rule Set Based Access Control       */
-/* Author and (c) 1999-2025:           */
+/* Author and (c) 1999-2026:           */
 /*   Amon Ott <ao@rsbac.org>           */
 /* Helper functions for all parts      */
-/* Last modified: 17/Dec/2025          */
+/* Last modified: 22/Jun/2026          */
 /************************************* */
 
 #include <rsbac/types.h>
@@ -599,8 +599,9 @@ int rsbac_handle_rw_req(const struct file *file, struct rsbac_rw_req *rsbac_rw_r
 		rsbac_rw_req_obj->rsbac_target_id.file.inode  = file->f_path.dentry->d_inode->i_ino;
 		rsbac_rw_req_obj->rsbac_target_id.file.dentry_p = file->f_path.dentry;
 	} else
-	if (S_ISSOCK(file->f_path.dentry->d_inode->i_mode)) {
+	if (S_ISSOCK(file->f_path.dentry->d_inode->i_mode) && file->f_path.dentry->d_sb->s_magic == SOCKFS_MAGIC) {
 		struct socket * sock = SOCKET_I(file->f_path.dentry->d_inode);
+
 		if (sock->ops && (sock->ops->family == AF_UNIX)) {
 			if (sock->sk) {
 				if (unix_sk(unix_sk(sock->sk)->peer)) {
