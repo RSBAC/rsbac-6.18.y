@@ -75,20 +75,28 @@ static int vfs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		rsbac_target_id.dev.major = RSBAC_MAJOR(filp->f_path.dentry->d_inode->i_rdev);
 		rsbac_target_id.dev.minor = RSBAC_MINOR(filp->f_path.dentry->d_inode->i_rdev);
 	} else if (S_ISSOCK(filp->f_path.dentry->d_inode->i_mode)) {
-		if (likely(filp->f_path.dentry->d_sb)) {
-			if (   filp->f_path.dentry->d_sb->s_magic == SOCKFS_MAGIC
-			    && SOCKET_I(filp->f_path.dentry->d_inode)->ops
-			    && SOCKET_I(filp->f_path.dentry->d_inode)->ops->family == AF_UNIX
-			  ) {
-				rsbac_target = T_IPC;
-				rsbac_target_id.ipc.type = I_anonunix;
-				rsbac_target_id.ipc.id.id_nr = filp->f_path.dentry->d_inode->i_ino;
-			} else {
-				rsbac_target = T_UNIXSOCK;
-				rsbac_target_id.unixsock.device = filp->f_path.dentry->d_sb->s_dev;
-				rsbac_target_id.unixsock.inode  = filp->f_path.dentry->d_inode->i_ino;
-				rsbac_target_id.unixsock.dentry_p = filp->f_path.dentry;
+		if (filp->f_path.dentry->d_inode->i_sb->s_magic == SOCKFS_MAGIC) {
+			struct socket * sock = SOCKET_I(filp->f_path.dentry->d_inode);
+
+			if (sock->ops) {
+				if (sock->ops->family == AF_UNIX) {
+					rsbac_target = T_IPC;
+					rsbac_target_id.ipc.type = I_anonunix;
+					rsbac_target_id.ipc.id.id_nr = filp->f_path.dentry->d_inode->i_ino;
+				} else {
+					rsbac_target = T_NETOBJ;
+					rsbac_target_id.netobj.sock_p = sock;
+					rsbac_target_id.netobj.local_addr = NULL;
+					rsbac_target_id.netobj.local_len = 0;
+					rsbac_target_id.netobj.remote_addr = NULL;
+					rsbac_target_id.netobj.remote_len = 0;
+				}
 			}
+		} else {
+			rsbac_target = T_UNIXSOCK;
+			rsbac_target_id.unixsock.device = filp->f_path.dentry->d_inode->i_sb->s_dev;
+			rsbac_target_id.unixsock.inode  = filp->f_path.dentry->d_inode->i_ino;
+			rsbac_target_id.unixsock.dentry_p = filp->f_path.dentry;
 		}
 	}
 	if (rsbac_target != T_NONE) {
