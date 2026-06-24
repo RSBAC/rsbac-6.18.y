@@ -3819,7 +3819,18 @@ static int do_move_mount(const struct path *old_path,
 		return -EPERM;
 #endif
 
-	return attach_recursive_mnt(old, &mp);
+	err = attach_recursive_mnt(old, &mp);
+
+#ifdef CONFIG_RSBAC
+/*
+ * We need to update the RSBAC parent pointer in the ACI device item,
+ * but only when in init_user_ns to provide consistent inheritance
+ */
+	if (!err && current->nsproxy->mnt_ns->user_ns == &init_user_ns)
+		rsbac_update_parent(&old->mnt, mnt_has_parent(old) ? &old->mnt_parent->mnt : NULL);
+#endif
+
+	return err;
 }
 
 static int do_move_mount_old(const struct path *path, const char *old_name)
@@ -4946,6 +4957,15 @@ SYSCALL_DEFINE2(pivot_root, const char __user *, new_root,
 	mnt_notify_add(root_mnt);
 	mnt_notify_add(new_mnt);
 	chroot_fs_refs(&root, &new);
+
+#ifdef CONFIG_RSBAC
+/*
+ * We need to update the RSBAC parent pointers in the ACI device items
+ * for both old and new root, since both have been moved
+ */
+	rsbac_update_parent(&root_mnt->mnt, mnt_has_parent(root_mnt) ? &root_mnt->mnt_parent->mnt : NULL);
+	rsbac_update_parent(&new_mnt->mnt, mnt_has_parent(new_mnt) ? &new_mnt->mnt_parent->mnt : NULL);
+#endif
 	return 0;
 }
 
