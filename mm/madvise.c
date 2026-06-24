@@ -35,6 +35,8 @@
 
 #include <asm/tlb.h>
 
+#include <rsbac/hooks.h>
+
 #include "internal.h"
 #include "swap.h"
 
@@ -2071,6 +2073,11 @@ SYSCALL_DEFINE5(process_madvise, int, pidfd, const struct iovec __user *, vec,
 	struct mm_struct *mm;
 	unsigned int f_flags;
 
+#ifdef CONFIG_RSBAC
+	union rsbac_target_id_t rsbac_target_id;
+	union rsbac_attribute_value_t rsbac_attribute_value;
+#endif
+
 	if (flags != 0) {
 		ret = -EINVAL;
 		goto out;
@@ -2085,6 +2092,21 @@ SYSCALL_DEFINE5(process_madvise, int, pidfd, const struct iovec __user *, vec,
 		ret = PTR_ERR(task);
 		goto free_iov;
 	}
+
+#ifdef CONFIG_RSBAC
+	rsbac_pr_debug(aef, "sys_process_madvise(): calling ADF\n");
+	rsbac_target_id.process = task_pid(task);
+	rsbac_attribute_value.dummy = 0;
+	if (!rsbac_adf_request(R_MODIFY_SYSTEM_DATA,
+			rsbac_target_id.process,
+			T_PROCESS,
+			rsbac_target_id,
+			A_none,
+			rsbac_attribute_value)) {
+		ret = -EPERM;
+		goto release_task;
+	}
+#endif
 
 	/* Require PTRACE_MODE_READ to avoid leaking ASLR metadata. */
 	mm = mm_access(task, PTRACE_MODE_READ_FSCREDS);
