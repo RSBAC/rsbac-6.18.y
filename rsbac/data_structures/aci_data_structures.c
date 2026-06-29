@@ -7525,6 +7525,8 @@ int rsbac_update_vfsmount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmou
 		WARN(1, "rsbac_update_vfsmount(): called with NULL vfsmount pointer\n");
 		return -RSBAC_EINVALIDPOINTER;
 	}
+	if (vfsmount_parent_p == vfsmount_p)
+		vfsmount_parent_p = NULL;
 	if (!rsbac_initialized) {
 		if (vfsmount_parent_p && vfsmount_parent_p->mnt_sb)
 			rsbac_printk(KERN_INFO "rsbac_update_vfsmount(): RSBAC not initialized, not updating vfsmount of DEV %02u:%02u, fs-type %s, parent is %02u:%02u, fs-type %s\n",
