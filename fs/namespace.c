@@ -3827,7 +3827,7 @@ static int do_move_mount(const struct path *old_path,
  * but only when in init_user_ns to provide consistent inheritance
  */
 	if (!err && current->nsproxy->mnt_ns->user_ns == &init_user_ns)
-		rsbac_update_vfsmount(&old->mnt, mnt_has_parent(old) ? &old->mnt_parent->mnt : NULL);
+		rsbac_update_vfsmount(&real_mount(new_path->mnt)->mnt, mnt_has_parent(real_mount(new_path->mnt)) ? &real_mount(new_path->mnt)->mnt_parent->mnt : NULL);
 #endif
 
 	return err;
