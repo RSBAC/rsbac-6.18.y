@@ -6183,6 +6183,7 @@ static int __init rsbac_do_init(void)
 	}
 #ifdef CONFIG_RSBAC_INIT_DELAY
 	if (rsbac_root_vfsmount_p)
+		/* mntget() already called for rsbac_root_vfsmount_p */
 		vfsmount_p = rsbac_root_vfsmount_p;
 	else
 #endif
@@ -6381,10 +6382,11 @@ static int __init rsbac_do_init(void)
 			     RSBAC_AUTH_LOGIN_PATH);
 
 		/* lookup filename */
-		if (vfsmount_p && !RSBAC_IS_INVALID_PTR(vfsmount_p->mnt_sb) && !RSBAC_IS_INVALID_PTR(vfsmount_p->mnt_sb->s_root) && !RSBAC_IS_INVALID_PTR(vfsmount_p->mnt_sb->s_root->d_inode) && !RSBAC_IS_INVALID_PTR(vfsmount_p->mnt_sb->s_root->d_inode->i_sb)) {
+		if (vfsmount_p && !RSBAC_IS_INVALID_PTR(vfsmount_p->mnt_sb) && !RSBAC_IS_INVALID_PTR(vfsmount_p->mnt_sb->s_root) && !RSBAC_IS_INVALID_PTR(vfsmount_p->mnt_sb->s_root->d_inode)) {
 			inode_lock(vfsmount_p->mnt_sb->s_root->d_inode);
-			dir_dentry = lookup_one(&nop_mnt_idmap, &QSTR(RSBAC_AUTH_LOGIN_PATH_DIR),
-						 vfsmount_p->mnt_sb->s_root);
+			if (!RSBAC_IS_INVALID_PTR(vfsmount_p->mnt_sb->s_root->d_inode->i_sb))
+				dir_dentry = lookup_one(&nop_mnt_idmap, &QSTR(RSBAC_AUTH_LOGIN_PATH_DIR),
+							vfsmount_p->mnt_sb->s_root);
 			inode_unlock(vfsmount_p->mnt_sb->s_root->d_inode);
 			if (!dir_dentry) {
 				err = -RSBAC_ENOTFOUND;
@@ -6408,8 +6410,7 @@ static int __init rsbac_do_init(void)
 			err = -RSBAC_ENOTFOUND;
 			rsbac_printk(KERN_WARNING "rsbac_do_init(): call to lookup_one for /%s failed\n",
 				     RSBAC_AUTH_LOGIN_PATH_DIR);
-			dput(dir_dentry);
-			goto auth_out;
+			goto auth_out_dput_dir;
 		}
 
 		inode_lock(dir_dentry->d_inode);
@@ -6419,27 +6420,16 @@ static int __init rsbac_do_init(void)
 
 		if (!t_dentry) {
 			err = -RSBAC_ENOTFOUND;
-			rsbac_printk(KERN_WARNING "rsbac_do_init(): call to lookup_one for /%s/%s failed\n",
-				     RSBAC_AUTH_LOGIN_PATH_DIR,
-				     RSBAC_AUTH_LOGIN_PATH_FILE);
+			rsbac_printk(KERN_WARNING "rsbac_do_init(): call to lookup_one for %s failed\n",
+				     RSBAC_AUTH_LOGIN_PATH);
 			goto auth_out;
 		}
 		if (IS_ERR(t_dentry)) {
 			err = PTR_ERR(t_dentry);
-			rsbac_printk(KERN_WARNING "rsbac_do_init(): call to lookup_one for /%s/%s returned %i\n",
-				     RSBAC_AUTH_LOGIN_PATH_DIR,
-				     RSBAC_AUTH_LOGIN_PATH_FILE, err);
+			rsbac_printk(KERN_WARNING "rsbac_do_init(): call to lookup_one for %s returned %i\n",
+				     RSBAC_AUTH_LOGIN_PATH, err);
 			goto auth_out;
 		}
-		if (!t_dentry->d_inode) {
-			err = -RSBAC_ENOTFOUND;
-			rsbac_printk(KERN_WARNING "rsbac_do_init(): call to lookup_one for /%s/%s failed\n",
-				     RSBAC_AUTH_LOGIN_PATH_DIR,
-				     RSBAC_AUTH_LOGIN_PATH_FILE);
-			dput(t_dentry);
-			goto auth_out;
-		}
-
 		if (!t_dentry->d_inode) {
 			rsbac_printk(KERN_WARNING "rsbac_do_init(): file %s not found\n",
 				     RSBAC_AUTH_LOGIN_PATH);
@@ -6462,14 +6452,22 @@ static int __init rsbac_do_init(void)
 				    inode_nr_p,
 				    &auth_fd_aci);
 		auth_fd_aci.auth_may_setuid = TRUE;
-		if (rsbac_list_add(device_p->handles.auth, inode_nr_p, &auth_fd_aci)) {	/* Adding failed! */
-			rsbac_printk(KERN_WARNING "rsbac_do_init(): Could not add AUTH file/dir item!\n");
-			err = -RSBAC_ECOULDNOTADDITEM;
-		}
+		err = rsbac_list_add(device_p->handles.auth, inode_nr_p, &auth_fd_aci);
+auth_out_dput:
+		dput(t_dentry);
+auth_out_dput_dir:
+		dput(dir_dentry);
+auth_out:
+		if (err) {
+			char *tmp;
 
-	      auth_out_dput:
-	      auth_out:
-		{
+			tmp = rsbac_kmalloc(RSBAC_MAXNAMELEN);
+			if (tmp) {
+				rsbac_printk(KERN_WARNING "rsbac_do_init(): setting auth_may_setuid for %s failed with error %s!\n",
+					RSBAC_AUTH_LOGIN_PATH,
+					get_error_name(tmp, err));
+				rsbac_kfree(tmp);
+			}
 		}
 	}
 #endif
@@ -7181,7 +7179,7 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 					     MAJOR(vfsmount_p->mnt_sb->s_dev),
 					     MINOR(vfsmount_p->mnt_sb->s_dev));
 			}
-			rsbac_root_vfsmount_p = vfsmount_p;
+			rsbac_root_vfsmount_p = mntget(vfsmount_p);
 			rsbac_init(vfsmount_p->mnt_sb->s_dev);
 			return 0;
 		}
