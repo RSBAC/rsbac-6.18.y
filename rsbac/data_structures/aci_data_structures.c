@@ -7575,7 +7575,7 @@ int rsbac_update_vfsmount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmou
 				major, minor);
 		if (device_p->vfsmount_p)
 			mntput(device_p->vfsmount_p);
-		device_p->vfsmount_p = vfsmount_p;
+		device_p->vfsmount_p = mntget(vfsmount_p);
 	} else {
 		rsbac_printk(KERN_WARNING "rsbac_update_vfsmount(): device %02u:%02u not found!\n",
 			major, minor);
