@@ -5,7 +5,7 @@
 /* (some smaller parts copied from fs/namei.c        */
 /*  and others)                                      */
 /*                                                   */
-/* Last modified: 30/Jun/2026                        */
+/* Last modified: 02/Jul/2026                        */
 /*************************************************** */
 
 #include <linux/types.h>
@@ -6650,7 +6650,7 @@ static int rsbac_write(rsbac_boolean_t force_rehash)
 	while (write_blocked) {
 		spin_unlock(&rsbac_write_lock);
 		rsbac_pr_debug(write, "rsbac_write(): write_blocked, wait 100ms and retry\n");
-		msleep_interruptible(100);
+		msleep_interruptible(200);
 		spin_lock(&rsbac_write_lock);
 	}
 	write_blocked = TRUE;
@@ -7219,14 +7219,16 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 	}
 
 	/* serialize mounts */
-	spin_lock(&rsbac_mount_lock);
-	while (rsbac_mount_pid != NULL) {
-		spin_unlock(&rsbac_mount_lock);
-		msleep_interruptible(100);
+	if (!rsbac_parallel_mounts) {
 		spin_lock(&rsbac_mount_lock);
+		while (rsbac_mount_pid != NULL) {
+			spin_unlock(&rsbac_mount_lock);
+			msleep_interruptible(200);
+			spin_lock(&rsbac_mount_lock);
+		}
+		rsbac_mount_pid = task_pid(current);
+		spin_unlock(&rsbac_mount_lock);
 	}
-	rsbac_mount_pid = task_pid(current);
-	spin_unlock(&rsbac_mount_lock);
 
 	major = RSBAC_MAJOR(vfsmount_p->mnt_sb->s_dev);
 	minor = RSBAC_MINOR(vfsmount_p->mnt_sb->s_dev);
@@ -7279,7 +7281,7 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 				while (write_blocked) {
 					spin_unlock(&rsbac_write_lock);
 					rsbac_pr_debug(write, "rsbac_mount(): write_blocked, wait 100ms and retry\n");
-					msleep_interruptible(100);
+					msleep_interruptible(200);
 					spin_lock(&rsbac_write_lock);
 				}
 				write_blocked = TRUE;
@@ -7301,7 +7303,8 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 		rsbac_pr_debug(stack, "after creating device item: free stack: %lu\n",
 			       rsbac_stack_free_space());
 		if (!new_device_p) {
-			rsbac_mount_pid = NULL;
+			if (!rsbac_parallel_mounts)
+				rsbac_mount_pid = NULL;
 			return -RSBAC_ECOULDNOTADDDEVICE;
 		}
 
@@ -7318,7 +7321,8 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 			srcu_read_unlock(&device_list_srcu[hash], srcu_idx);
 			device_p = add_device_item(new_device_p, TRUE);
 			if (!device_p) {
-				rsbac_mount_pid = NULL;
+				if (!rsbac_parallel_mounts)
+					rsbac_mount_pid = NULL;
 				rsbac_printk(KERN_WARNING "rsbac_mount: adding device %02u:%02u failed!\n",
 					     major, minor);
 				clear_device_item(new_device_p);
@@ -7372,7 +7376,8 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 		       rsbac_stack_free_space());
 #endif				/* REG */
 
-	rsbac_mount_pid = NULL;
+	if (!rsbac_parallel_mounts)
+		rsbac_mount_pid = NULL;
 
 	return err;
 }
@@ -7438,17 +7443,19 @@ int rsbac_umount(struct vfsmount *vfsmount_p)
 
 	/* sync attribute lists */
 #if defined(CONFIG_RSBAC_AUTO_WRITE)
-	/* serialize mounts */
-	spin_lock(&rsbac_mount_lock);
-	while (rsbac_mount_pid != NULL) {
-		spin_unlock(&rsbac_mount_lock);
-		msleep_interruptible(100);
+	if (!rsbac_parallel_mounts) {
+		/* serialize mounts */
 		spin_lock(&rsbac_mount_lock);
+		while (rsbac_mount_pid != NULL) {
+			spin_unlock(&rsbac_mount_lock);
+			msleep_interruptible(200);
+			spin_lock(&rsbac_mount_lock);
+		}
+		rsbac_mount_pid = task_pid(current);
+		spin_unlock(&rsbac_mount_lock);
+		rsbac_write(FALSE);
+		rsbac_mount_pid = NULL;
 	}
-	rsbac_mount_pid = task_pid(current);
-	spin_unlock(&rsbac_mount_lock);
-	rsbac_write(FALSE);
-	rsbac_mount_pid = NULL;
 #endif
 /* call other umount functions */
 #if defined(CONFIG_RSBAC_MAC)
