@@ -6428,13 +6428,13 @@ static int __init rsbac_do_init(void)
 			err = -RSBAC_ENOTFOUND;
 			rsbac_printk(KERN_WARNING "rsbac_do_init(): call to lookup_one for %s failed\n",
 				     RSBAC_AUTH_LOGIN_PATH);
-			goto auth_out;
+			goto auth_out_dput_dir;
 		}
 		if (IS_ERR(t_dentry)) {
 			err = PTR_ERR(t_dentry);
 			rsbac_printk(KERN_WARNING "rsbac_do_init(): call to lookup_one for %s returned %i\n",
 				     RSBAC_AUTH_LOGIN_PATH, err);
-			goto auth_out;
+			goto auth_out_dput_dir;
 		}
 		if (RSBAC_IS_INVALID_PTR(t_dentry->d_inode)) {
 			rsbac_printk(KERN_WARNING "rsbac_do_init(): file %s not found\n",
