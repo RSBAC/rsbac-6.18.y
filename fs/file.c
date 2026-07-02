@@ -1378,8 +1378,8 @@ int receive_fd(struct file *file, int __user *ufd, unsigned int o_flags)
 
 #if defined(CONFIG_RSBAC_CAP_FD_HIDE)
 	if (   file->f_inode
-	    && !S_ISBLK(file->f_mode)
-	    && !S_ISCHR(file->f_mode)
+	    && !S_ISBLK(file->f_inode->i_mode)
+	    && !S_ISCHR(file->f_inode->i_mode)
 	    && rsbac_cap_hide_fd(file->f_inode))
 		return -ENOENT;
 #endif
@@ -1387,9 +1387,9 @@ int receive_fd(struct file *file, int __user *ufd, unsigned int o_flags)
 #ifdef CONFIG_RSBAC
 	rsbac_pr_debug(aef, "receive_fd(): calling ADF\n");
 	/* get target type and id clear */
-	if (S_ISBLK(file->f_mode) || S_ISCHR(file->f_mode)){
+	if (S_ISBLK(file->f_inode->i_mode) || S_ISCHR(file->f_inode->i_mode)){
 		rsbac_target = T_DEV;
-		if (S_ISBLK(file->f_mode))
+		if (S_ISBLK(file->f_inode->i_mode))
 			rsbac_target_id.dev.type = D_block;
 		else
 			rsbac_target_id.dev.type = D_char;
@@ -1400,11 +1400,11 @@ int receive_fd(struct file *file, int __user *ufd, unsigned int o_flags)
 		rsbac_target_id.file.device = file->f_inode->i_sb->s_dev;
 		rsbac_target_id.file.inode  = file->f_inode->i_ino;
 		rsbac_target_id.file.dentry_p = file->f_path.dentry;
-		if (S_ISDIR(file->f_mode))
+		if (S_ISDIR(file->f_inode->i_mode))
 			rsbac_target = T_DIR;
-		else if (S_ISSOCK(file->f_mode))
+		else if (S_ISSOCK(file->f_inode->i_mode))
 			rsbac_target = T_UNIXSOCK;
-		else if (S_ISFIFO(file->f_mode)) {
+		else if (S_ISFIFO(file->f_inode->i_mode)) {
 			if (file->f_inode->i_sb->s_magic != PIPEFS_MAGIC)
 				rsbac_target = T_FIFO;
 			else
@@ -1415,7 +1415,7 @@ int receive_fd(struct file *file, int __user *ufd, unsigned int o_flags)
 			rsbac_target_id.ipc.type = I_memfd;
 			rsbac_target_id.ipc.id.id_nr = (u_long) file->f_inode;
 		}
-		else if (S_ISREG(file->f_mode))
+		else if (S_ISREG(file->f_inode->i_mode))
 			rsbac_target = T_FILE;
 	}
 	/* determine request type */
