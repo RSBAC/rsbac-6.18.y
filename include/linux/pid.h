@@ -64,6 +64,9 @@ struct pid {
 		struct dentry *stashed;
 		struct pidfs_attr *attr;
 	};
+#ifdef CONFIG_RSBAC
+	bool rsbac_mount_process;
+#endif
 	/* lists of tasks that use this pid */
 	struct hlist_head tasks[PIDTYPE_MAX];
 	struct hlist_head inodes;
