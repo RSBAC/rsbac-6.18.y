@@ -5,7 +5,7 @@
 /* (some smaller parts copied from fs/namei.c        */
 /*  and others)                                      */
 /*                                                   */
-/* Last modified: 02/Jul/2026                        */
+/* Last modified: 03/Jul/2026                        */
 /*************************************************** */
 
 #include <linux/types.h>
@@ -7259,6 +7259,10 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 		rsbac_pr_debug(ds, "mounting device %02u:%02u, no parent given\n",
 				major, minor);
 	}
+	/* mark our pid as mount process */
+	if (rsbac_parallel_mounts)
+		task_pid(current)->rsbac_mount_process = true;
+
 	hash = device_hash(minor);
 	srcu_idx = srcu_read_lock(&device_list_srcu[hash]);
 	device_p = lookup_device(major, minor, hash);
@@ -7303,6 +7307,9 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 		rsbac_pr_debug(stack, "after creating device item: free stack: %lu\n",
 			       rsbac_stack_free_space());
 		if (!new_device_p) {
+			/* unmark our pid as mount process */
+			if (rsbac_parallel_mounts)
+				task_pid(current)->rsbac_mount_process = false;
 			if (!rsbac_parallel_mounts)
 				rsbac_mount_pid = NULL;
 			return -RSBAC_ECOULDNOTADDDEVICE;
@@ -7321,6 +7328,9 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 			srcu_read_unlock(&device_list_srcu[hash], srcu_idx);
 			device_p = add_device_item(new_device_p, TRUE);
 			if (!device_p) {
+				/* unmark our pid as mount process */
+				if (rsbac_parallel_mounts)
+					task_pid(current)->rsbac_mount_process = false;
 				if (!rsbac_parallel_mounts)
 					rsbac_mount_pid = NULL;
 				rsbac_printk(KERN_WARNING "rsbac_mount: adding device %02u:%02u failed!\n",
@@ -7333,7 +7343,6 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 		}
 
 		/* we do not lock device head - we know the device_p and hope for the best... */
-		/* also, we are within kernel mount sem */
 		if ((err = register_fd_lists(new_device_p, major, minor))) {
 			char *tmp;
 
@@ -7375,6 +7384,10 @@ int rsbac_mount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmount_parent_
 	rsbac_pr_debug(stack, "after mount_reg: free stack: %lu\n",
 		       rsbac_stack_free_space());
 #endif				/* REG */
+
+	/* unmark our pid as mount process */
+	if (rsbac_parallel_mounts)
+		task_pid(current)->rsbac_mount_process = false;
 
 	if (!rsbac_parallel_mounts)
 		rsbac_mount_pid = NULL;
@@ -7441,8 +7454,10 @@ int rsbac_umount(struct vfsmount *vfsmount_p)
 	rsbac_pr_debug(ds, "umounting device %02u:%02u\n",
 		       major, minor);
 
-	/* sync attribute lists */
-#if defined(CONFIG_RSBAC_AUTO_WRITE)
+#ifndef CONFIG_RSBAC_NO_WRITE
+	/* detaching lists triggers a final write of dirty lists,
+	 * so we need to override access control
+	 */
 	if (!rsbac_parallel_mounts) {
 		/* serialize mounts */
 		spin_lock(&rsbac_mount_lock);
@@ -7453,10 +7468,18 @@ int rsbac_umount(struct vfsmount *vfsmount_p)
 		}
 		rsbac_mount_pid = task_pid(current);
 		spin_unlock(&rsbac_mount_lock);
-		rsbac_write(FALSE);
-		rsbac_mount_pid = NULL;
+	} else {
+		/* mark our pid as mount process */
+		task_pid(current)->rsbac_mount_process = true;
 	}
+
+#if defined(CONFIG_RSBAC_AUTO_WRITE)
+	/* sync attribute lists now, if auto write */
+	rsbac_write(FALSE);
 #endif
+
+#endif
+
 /* call other umount functions */
 #if defined(CONFIG_RSBAC_MAC)
 	rsbac_umount_mac(major, minor);
@@ -7516,6 +7539,15 @@ int rsbac_umount(struct vfsmount *vfsmount_p)
 	umount_device_in_progress_major = RSBAC_AUTO_DEV_NUM;
 	umount_device_in_progress_minor = RSBAC_AUTO_DEV_NUM;
 	spin_unlock(&device_list_locks[hash]);
+
+#ifndef CONFIG_RSBAC_NO_WRITE
+	if (!rsbac_parallel_mounts) {
+		rsbac_mount_pid = NULL;
+	} else {
+		/* unmark our pid as mount process */
+		task_pid(current)->rsbac_mount_process = false;
+	}
+#endif
 
 	return 0;
 }
