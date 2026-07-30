@@ -246,27 +246,25 @@ static int proc_cwd_link(struct dentry *dentry, struct path *path,
 {
 	int result = -ENOENT;
 
-
 #ifdef CONFIG_RSBAC
-		union rsbac_target_id_t rsbac_target_id;
-		union rsbac_attribute_value_t rsbac_attribute_value;
+	union rsbac_target_id_t rsbac_target_id;
+	union rsbac_attribute_value_t rsbac_attribute_value;
 
-		rsbac_pr_debug(aef, "calling ADF\n");
-		rsbac_target_id.process = get_task_pid(task, PIDTYPE_PID);
-		if (rsbac_target_id.process) {
-			rsbac_attribute_value.dummy = 0;
-			if (!rsbac_adf_request(R_GET_STATUS_DATA,
-						task_pid(current),
-						T_PROCESS,
-						rsbac_target_id,
-						A_none,
-						rsbac_attribute_value)) {
-				put_pid(rsbac_target_id.process);
-				put_task_struct(task);
-				return -EPERM;
-			}
+	rsbac_pr_debug(aef, "calling ADF\n");
+	rsbac_target_id.process = get_task_pid(task, PIDTYPE_PID);
+	if (rsbac_target_id.process) {
+		rsbac_attribute_value.dummy = 0;
+		if (!rsbac_adf_request(R_GET_STATUS_DATA,
+					task_pid(current),
+					T_PROCESS,
+					rsbac_target_id,
+					A_none,
+					rsbac_attribute_value)) {
 			put_pid(rsbac_target_id.process);
+			return -EPERM;
 		}
+		put_pid(rsbac_target_id.process);
+	}
 #endif
 
 	task_lock(task);
@@ -1014,7 +1012,6 @@ struct mm_struct *proc_mem_open(struct inode *inode, unsigned int mode)
 
 	if (!task)
 		return ERR_PTR(-ESRCH);
-
 
 #ifdef CONFIG_RSBAC
 	rsbac_pr_debug(aef, "calling ADF\n");
@@ -2162,7 +2159,6 @@ static int proc_exe_link(struct dentry *dentry, struct path *exe_path,
 					A_none,
 					rsbac_attribute_value)) {
 			put_pid(rsbac_target_id.process);
-			put_task_struct(task);
 			return -EPERM;
 		}
 		put_pid(rsbac_target_id.process);
