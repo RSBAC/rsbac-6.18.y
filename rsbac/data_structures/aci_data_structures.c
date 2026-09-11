@@ -5,7 +5,7 @@
 /* (some smaller parts copied from fs/namei.c        */
 /*  and others)                                      */
 /*                                                   */
-/* Last modified: 06/Jul/2026                        */
+/* Last modified: 11/Sep/2026                        */
 /*************************************************** */
 
 #include <linux/types.h>
@@ -7618,7 +7618,7 @@ int rsbac_update_vfsmount(struct vfsmount * vfsmount_p, struct vfsmount * vfsmou
 				mnttoput = device_p->vfsmount_p;
 				device_p->vfsmount_p = mntget(vfsmount_p);
 			} else {
-				rsbac_printk(KERN_INFO "rsbac_update_vfsmount(): vfsmount of fs-type %s device %02u:%02u is unchanged\n",
+				rsbac_pr_debug(ds, "rsbac_update_vfsmount(): vfsmount of fs-type %s device %02u:%02u is unchanged\n",
 					vfsmount_p->mnt_sb->s_type->name,
 					major, minor);
 			}
